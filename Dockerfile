@@ -1,64 +1,20 @@
-# Use official Python image as base
-FROM python:3.9-slim
+FROM node:18-alpine
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
-ENV HOME /home/jupyter
-ENV SHELL /bin/bash
-ENV PATH="/home/jupyter/.local/bin:${PATH}"
+# Install system dependencies including git
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    cairo-dev \
+    jpeg-dev \
+    pango-dev \
+    giflib-dev \
+    git
 
-# Create user and set up directory
-RUN useradd -m -s /bin/bash jupyter && \
-    mkdir -p /home/jupyter/work && \
-    chown jupyter:jupyter /home/jupyter/work
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
 
-# Install system dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    git \
-    wget \
-    && rm -rf /var/lib/apt/lists/*
-
-# Switch to jupyter user
-USER jupyter
-WORKDIR /home/jupyter/work
-
-# Install JupyterLab and data science packages
-RUN pip install --no-cache-dir --user \
-    jupyterlab \
-    notebook \
-    ipywidgets \
-    jupyterlab_widgets \
-    numpy \
-    pandas \
-    matplotlib \
-    seaborn \
-    scipy \
-    scikit-learn \
-    statsmodels \
-    black \
-    isort \
-    flake8 \
-    pylint && \
-    pip install --upgrade pip
-
-# Install and configure extensions (new method for JupyterLab 3+)
-RUN jupyter labextension install @jupyter-widgets/jupyterlab-manager && \
-    jupyter server extension enable --py jupyterlab --user
-
-# Set up Jupyter config
-RUN mkdir -p /home/jupyter/.jupyter && \
-    echo "c.NotebookApp.token = ''" > /home/jupyter/.jupyter/jupyter_notebook_config.py && \
-    echo "c.NotebookApp.password = ''" >> /home/jupyter/.jupyter/jupyter_notebook_config.py && \
-    echo "c.NotebookApp.ip = '0.0.0.0'" >> /home/jupyter/.jupyter/jupyter_notebook_config.py && \
-    echo "c.NotebookApp.open_browser = False" >> /home/jupyter/.jupyter/jupyter_notebook_config.py && \
-    echo "c.NotebookApp.notebook_dir = '/home/jupyter/work'" >> /home/jupyter/.jupyter/jupyter_notebook_config.py
-
-# Expose Jupyter port
-EXPOSE 8888
-
-# Start JupyterLab
-CMD ["jupyter", "lab"]
+EXPOSE 3000
+CMD ["npm", "start"]
