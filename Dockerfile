@@ -2,18 +2,18 @@
 
 # Stage 1: Build the frontend
 FROM node:16-alpine as frontend-builder
-WORKDIR /app/client
-COPY client/package.json client/package-lock.json ./
-RUN npm install
-COPY client .
-RUN npm run build
+WORKDIR /app
+COPY client/package.json client/package-lock.json ./client/
+RUN npm install --prefix client
+COPY client ./client
+RUN npm run build --prefix client
 
 # Stage 2: Build the backend
 FROM node:16-alpine as backend-builder
-WORKDIR /app/server
-COPY server/package.json server/package-lock.json ./
-RUN npm install --production
-COPY server .
+WORKDIR /app
+COPY server/package.json server/package-lock.json ./server/
+RUN npm install --prefix server --production
+COPY server ./server
 
 # Stage 3: Create the final image
 FROM node:16-alpine
@@ -33,11 +33,12 @@ RUN npm install --prefix client --production
 # Environment variables
 ENV NODE_ENV=production
 ENV PORT=3000
-ENV CLIENT_PORT=3000
 ENV SERVER_PORT=3001
 
 # Expose ports
 EXPOSE 3000 3001
 
-# Start command
-CMD ["sh", "-c", "npm start --prefix server & npm start --prefix client"]
+# Start command using PM2 for process management
+RUN npm install -g pm2
+COPY ecosystem.config.js .
+CMD ["pm2-runtime", "ecosystem.config.js"]
