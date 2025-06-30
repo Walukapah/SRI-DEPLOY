@@ -8,14 +8,13 @@ const {
     useMultiFileAuthState,
     delay,
     makeCacheableSignalKeyStore,
-    Browsers,
-    jidNormalizedUser
+    Browsers
 } = require("@whiskeysockets/baileys");
 
 const app = express();
-const port = 3000; // Hardcoded port
+const port = 3000;
 
-// Initialize Telegram Bot with hardcoded token
+// Initialize Telegram Bot
 const bot = new TelegramBot('7355024353:AAFcH-OAF5l5Fj6-igY4jOtqZ7HtZGRrlYQ', { polling: true });
 
 function removeFile(FilePath) {
@@ -23,7 +22,7 @@ function removeFile(FilePath) {
     fs.rmSync(FilePath, { recursive: true, force: true });
 }
 
-// Express health check endpoint
+// Express routes
 app.get('/', (req, res) => {
     res.status(200).json({
         status: 'running',
@@ -50,15 +49,14 @@ bot.on('message', async (msg) => {
     }
 
     try {
-        const { state, saveCreds } = await useMultiFileAuthState(`./session`);
+        const { state, saveCreds } = await useMultiFileAuthState('./session');
         const socket = makeWASocket({
             auth: {
                 creds: state.creds,
-                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" }).child({ level: "fatal" }))
+                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" }))
             },
-            printQRInTerminal: false,
-            logger: pino({ level: "fatal" }).child({ level: "fatal" }),
-            browser: Browsers.macOS("Safari")
+            logger: pino({ level: "fatal" }),
+            browser: Browsers.macOS("Desktop")
         });
 
         if (!socket.authState.creds.registered) {
@@ -77,17 +75,16 @@ This code will expire in a few minutes.`, { parse_mode: 'Markdown' });
         }
 
         socket.ev.on('creds.update', saveCreds);
-        socket.ev.on("connection.update", async (s) => {
-            const { connection, lastDisconnect } = s;
+        socket.ev.on("connection.update", async (update) => {
+            const { connection, lastDisconnect } = update;
+            
             if (connection === "open") {
                 try {
-                    await delay(10000);
+                    await delay(3000);
                     const sessionData = fs.readFileSync('./session/creds.json');
                     const b64data = Buffer.from(sessionData).toString('base64');
                     
-                    const user_jid = jidNormalizedUser(socket.user.id);
-                    
-                    await socket.sendMessage(user_jid, {
+                    await socket.sendMessage(socket.user.id, {
                         text: `SRI-BOT~${b64data}`
                     });
                     
@@ -101,36 +98,42 @@ This code will expire in a few minutes.`, { parse_mode: 'Markdown' });
 මෙය ආරක්ෂිතව ගබඩා කරන්න!
 ▬▬▬▬▬▬▬▬▬▬▬▬▬▬`;
                     
-                    await socket.sendMessage(user_jid, { text: successMsg });
+                    await socket.sendMessage(socket.user.id, { text: successMsg });
 
+                    await delay(100);
+                    await removeFile('./session');
+                    process.exit(0);
                 } catch (e) {
-                    console.error("Error:", e);
-                    exec('pm2 restart prabath');
+                    console.error("Session error:", e);
+                    exec('pm2 restart sribot');
                 }
-
-                await delay(100);
-                await removeFile('./session');
-                process.exit(0);
-            } else if (connection === "close" && lastDisconnect?.error?.output?.statusCode !== 401) {
-                await delay(10000);
-                startPairing(num, chatId);
+            } 
+            else if (connection === "close") {
+                if (lastDisconnect?.error?.output?.statusCode !== 401) {
+                    await delay(10000);
+                    exec('pm2 restart sribot');
+                }
             }
         });
     } catch (err) {
-        console.error("Error:", err);
-        exec('pm2 restart prabath');
-        await removeFile('./session');
+        console.error("Main error:", err);
+        exec('pm2 restart sribot');
+        removeFile('./session');
         bot.sendMessage(chatId, '❌ An error occurred. Please try again later.');
     }
 });
 
-process.on('uncaughtException', function (err) {
-    console.log('Caught exception: ' + err);
-    exec('pm2 restart prabath');
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+    exec('pm2 restart sribot');
 });
 
-// Start Express server
+process.on('unhandledRejection', (err) => {
+    console.error('Unhandled Rejection:', err);
+    exec('pm2 restart sribot');
+});
+
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
-    console.log('Telegram bot started and polling...');
+    console.log('Telegram bot started');
 });
