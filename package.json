@@ -1,0 +1,17 @@
+{
+  "name": "whatsapp-bot-deployer",
+  "version": "1.0.0",
+  "description": "WhatsApp Bot Deployment Platform for Koyeb",
+  "scripts": {
+    "install-all": "npm install --prefix client && npm install --prefix server",
+    "build": "npm run build --prefix client",
+    "start": "npm run start --prefix server",
+    "dev": "concurrently \"npm run dev --prefix client\" \"npm run dev --prefix server\""
+  },
+  "dependencies": {
+    "concurrently": "^8.2.1"
+  },
+  "engines": {
+    "node": "16.x"
+  }
+}
