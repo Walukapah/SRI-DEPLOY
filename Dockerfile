@@ -29,6 +29,9 @@ WORKDIR /home/jupyter/work
 # Install JupyterLab and data science packages
 RUN pip install --no-cache-dir --user \
     jupyterlab \
+    notebook \
+    ipywidgets \
+    jupyterlab_widgets \
     numpy \
     pandas \
     matplotlib \
@@ -36,19 +39,15 @@ RUN pip install --no-cache-dir --user \
     scipy \
     scikit-learn \
     statsmodels \
-    notebook \
-    ipywidgets \
-    jupyter_contrib_nbextensions \
-    jupyter_nbextensions_configurator \
     black \
     isort \
     flake8 \
     pylint && \
     pip install --upgrade pip
 
-# Install Jupyter extensions
-RUN jupyter nbextension enable --py widgetsnbextension && \
-    jupyter labextension install @jupyter-widgets/jupyterlab-manager
+# Install and configure extensions (new method for JupyterLab 3+)
+RUN jupyter labextension install @jupyter-widgets/jupyterlab-manager && \
+    jupyter server extension enable --py jupyterlab --user
 
 # Set up Jupyter config
 RUN mkdir -p /home/jupyter/.jupyter && \
