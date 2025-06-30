@@ -1,44 +1,66 @@
-# Multi-stage build for production
+# Use official Python image as base
+FROM python:3.9-slim
 
-# Stage 1: Build the frontend
-FROM node:16-alpine AS frontend-builder
-WORKDIR /app
-COPY client/package.json client/package-lock.json ./
-RUN npm install
-COPY client .
-RUN npm run build
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+ENV HOME /home/jupyter
+ENV SHELL /bin/bash
 
-# Stage 2: Build the backend
-FROM node:16-alpine AS backend-builder
-WORKDIR /app
-COPY server/package.json server/package-lock.json ./
-RUN npm install --production
-COPY server .
+# Create user and set up directory
+RUN useradd -m -s /bin/bash jupyter && \
+    mkdir -p /home/jupyter/work && \
+    chown jupyter:jupyter /home/jupyter/work
 
-# Stage 3: Create the final image
-FROM node:16-alpine
-WORKDIR /app
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    git \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy built frontend
-COPY --from=frontend-builder /app/.next ./.next
-COPY --from=frontend-builder /app/public ./public
-COPY --from=frontend-builder /app/package.json ./
+# Switch to jupyter user
+USER jupyter
+WORKDIR /home/jupyter/work
 
-# Copy backend
-COPY --from=backend-builder /app ./server
+# Install JupyterLab and data science packages
+RUN pip install --no-cache-dir --user \
+    jupyterlab \
+    numpy \
+    pandas \
+    matplotlib \
+    seaborn \
+    scipy \
+    scikit-learn \
+    statsmodels \
+    notebook \
+    ipywidgets \
+    jupyter_contrib_nbextensions \
+    jupyter_nbextensions_configurator \
+    black \
+    isort \
+    flake8 \
+    pylint
 
-# Install production dependencies
-RUN npm install --production
+# Install Jupyter extensions
+RUN jupyter nbextension enable --py widgetsnbextension && \
+    jupyter labextension install @jupyter-widgets/jupyterlab-manager
 
-# Environment variables
-ENV NODE_ENV=production
-ENV PORT=3000
-ENV SERVER_PORT=3001
+# Set up Jupyter config
+RUN mkdir -p /home/jupyter/.jupyter && \
+    echo "c.NotebookApp.token = ''" > /home/jupyter/.jupyter/jupyter_notebook_config.py && \
+    echo "c.NotebookApp.password = ''" >> /home/jupyter/.jupyter/jupyter_notebook_config.py && \
+    echo "c.NotebookApp.ip = '0.0.0.0'" >> /home/jupyter/.jupyter/jupyter_notebook_config.py && \
+    echo "c.NotebookApp.open_browser = False" >> /home/jupyter/.jupyter/jupyter_notebook_config.py && \
+    echo "c.NotebookApp.notebook_dir = '/home/jupyter/work'" >> /home/jupyter/.jupyter/jupyter_notebook_config.py
 
-# Expose ports
-EXPOSE 3000 3001
+# Add local bin to PATH
+ENV PATH=/home/jupyter/.local/bin:$PATH
 
-# Start command using PM2
-RUN npm install -g pm2
-COPY ecosystem.config.js .
-CMD ["pm2-runtime", "ecosystem.config.js"]
+# Expose Jupyter port
+EXPOSE 8888
+
+# Start JupyterLab
+CMD ["jupyter", "lab"]
