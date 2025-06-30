@@ -6,6 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 ENV HOME /home/jupyter
 ENV SHELL /bin/bash
+ENV PATH="/home/jupyter/.local/bin:${PATH}"
 
 # Create user and set up directory
 RUN useradd -m -s /bin/bash jupyter && \
@@ -42,7 +43,8 @@ RUN pip install --no-cache-dir --user \
     black \
     isort \
     flake8 \
-    pylint
+    pylint && \
+    pip install --upgrade pip
 
 # Install Jupyter extensions
 RUN jupyter nbextension enable --py widgetsnbextension && \
@@ -55,9 +57,6 @@ RUN mkdir -p /home/jupyter/.jupyter && \
     echo "c.NotebookApp.ip = '0.0.0.0'" >> /home/jupyter/.jupyter/jupyter_notebook_config.py && \
     echo "c.NotebookApp.open_browser = False" >> /home/jupyter/.jupyter/jupyter_notebook_config.py && \
     echo "c.NotebookApp.notebook_dir = '/home/jupyter/work'" >> /home/jupyter/.jupyter/jupyter_notebook_config.py
-
-# Add local bin to PATH
-ENV PATH=/home/jupyter/.local/bin:$PATH
 
 # Expose Jupyter port
 EXPOSE 8888
