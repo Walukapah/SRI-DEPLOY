@@ -4,7 +4,7 @@
   "description": "Telegram image uploader bot",
   "main": "bot.js",
   "scripts": {
-    "start": "pm2 start index.js --deep-monitoring --attach --name sribot",
+    "start": "pm2 start bot.js --deep-monitoring --attach --name sribot",
     "stop": "pm2 stop sribot",
     "restart": "pm2 restart sribot"
   },
