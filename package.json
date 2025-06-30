@@ -9,7 +9,7 @@
     "restart": "pm2 restart sribot"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.4.0",
+    "@whiskeysockets/baileys": "github:WaysModzz/baileys",
     "express": "^4.18.2",
     "node-telegram-bot-api": "^0.66.0",
     "pm2": "^5.2.0",
