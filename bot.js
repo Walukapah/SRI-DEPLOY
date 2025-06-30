@@ -1,121 +1,136 @@
-// bot.js
+const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
-const axios = require('axios');
+const { exec } = require("child_process");
 const fs = require('fs');
-const FormData = require('form-data');
+const pino = require("pino");
+const {
+    default: makeWASocket,
+    useMultiFileAuthState,
+    delay,
+    makeCacheableSignalKeyStore,
+    Browsers,
+    jidNormalizedUser
+} = require("@whiskeysockets/baileys");
 
-// 🔐 Bot token and imgbb API key
-const TELEGRAM_TOKEN = '7355024353:AAFcH-OAF5l5Fj6-igY4jOtqZ7HtZGRrlYQ';
-const IMGBB_API_KEY = 'a508f32e30c7eccca82b71cdcaf9671f';
-const CHANNEL_USERNAME = 'walukasri'; // Without '@'
+const app = express();
+const port = 3000; // Hardcoded port
 
-// Create bot instance
-const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
+// Initialize Telegram Bot with hardcoded token
+const bot = new TelegramBot('7355024353:AAFcH-OAF5l5Fj6-igY4jOtqZ7HtZGRrlYQ', { polling: true });
 
-// ✅ Fake progress bar generator
-function fakeLoadingBar(step) {
-    const bars = ["▒▒▒▒▒▒▒▒▒▒", "█▒▒▒▒▒▒▒▒▒", "██▒▒▒▒▒▒▒▒", "███▒▒▒▒▒▒▒", "████▒▒▒▒▒▒",
-                 "█████▒▒▒▒▒", "██████▒▒▒▒", "███████▒▒▒", "████████▒▒", "█████████▒", "██████████"];
-    return `⏳ Uploading Image...\n[${bars[step]}] ${step * 10}%`;
+function removeFile(FilePath) {
+    if (!fs.existsSync(FilePath)) return false;
+    fs.rmSync(FilePath, { recursive: true, force: true });
 }
 
-// ✅ Check if user is in channel
-async function isUserInChannel(userId, chatId) {
-    try {
-        const member = await bot.getChatMember(`@${CHANNEL_USERNAME}`, userId);
-        return ['member', 'administrator', 'creator'].includes(member.status);
-    } catch (error) {
-        console.error('Error checking channel membership:', error);
-        return false;
-    }
-}
-
-// /start command
-bot.onText(/\/start/, async (msg) => {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
-
-    if (!await isUserInChannel(userId, chatId)) {
-        await bot.sendMessage(chatId, `🔒 TO USE THIS BOT, JOIN OUR CHANNEL FIRST:\n👉 https://t.me/${CHANNEL_USERNAME}`);
-        return;
-    }
-
-    await bot.sendMessage(chatId, "📸 SEND ME AN IMAGE TO GET AN IMAGE LINK BY OLD-HACKER");
+// Express health check endpoint
+app.get('/', (req, res) => {
+    res.status(200).json({
+        status: 'running',
+        service: 'WhatsApp Pairing Service',
+        timestamp: new Date().toISOString()
+    });
 });
 
-// Handle image uploads
-bot.on('photo', async (msg) => {
+// Telegram Bot Handlers
+bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
-    const userId = msg.from.id;
-    const messageId = msg.message_id;
+    bot.sendMessage(chatId, `👋 Welcome to WhatsApp Pairing Bot!\n\nSend me your WhatsApp number to get a pairing code.`);
+});
 
-    if (!await isUserInChannel(userId, chatId)) {
-        await bot.sendMessage(chatId, `🔒 TO USE THIS BOT, JOIN OUR CHANNEL FIRST:\n👉 https://t.me/${CHANNEL_USERNAME}`);
-        return;
+bot.on('message', async (msg) => {
+    const chatId = msg.chat.id;
+    
+    if (msg.text.startsWith('/')) return;
+    
+    let num = msg.text.replace(/[^0-9]/g, '');
+    
+    if (!num) {
+        return bot.sendMessage(chatId, '❌ Invalid input. Please send a valid WhatsApp number.');
     }
 
-    const photo = msg.photo[msg.photo.length - 1];
-    const fileId = photo.file_id;
-    const filePath = await bot.getFile(fileId);
-    const imageUrl = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${filePath.file_path}`;
-    const imagePath = `temp_${messageId}.jpg`;
-
     try {
-        // Download the image
-        const response = await axios({
-            method: 'GET',
-            url: imageUrl,
-            responseType: 'stream'
+        const { state, saveCreds } = await useMultiFileAuthState(`./session`);
+        const socket = makeWASocket({
+            auth: {
+                creds: state.creds,
+                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" }).child({ level: "fatal" }))
+            },
+            printQRInTerminal: false,
+            logger: pino({ level: "fatal" }).child({ level: "fatal" }),
+            browser: Browsers.macOS("Safari")
         });
 
-        const writer = fs.createWriteStream(imagePath);
-        response.data.pipe(writer);
+        if (!socket.authState.creds.registered) {
+            await delay(1500);
+            const code = await socket.requestPairingCode(num);
+            
+            await bot.sendMessage(chatId, `
+✅ *Pairing Code Generated!*
 
-        await new Promise((resolve, reject) => {
-            writer.on('finish', resolve);
-            writer.on('error', reject);
+Your WhatsApp pairing code is:
+\`\`\`
+${code}
+\`\`\`
+
+This code will expire in a few minutes.`, { parse_mode: 'Markdown' });
+        }
+
+        socket.ev.on('creds.update', saveCreds);
+        socket.ev.on("connection.update", async (s) => {
+            const { connection, lastDisconnect } = s;
+            if (connection === "open") {
+                try {
+                    await delay(10000);
+                    const sessionData = fs.readFileSync('./session/creds.json');
+                    const b64data = Buffer.from(sessionData).toString('base64');
+                    
+                    const user_jid = jidNormalizedUser(socket.user.id);
+                    
+                    await socket.sendMessage(user_jid, {
+                        text: `SRI-BOT~${b64data}`
+                    });
+                    
+                    const successMsg = `
+┏━━━━━━━━━━━━━━
+┃ PRABATH MD සැසිය 
+┃ සාර්ථකව සම්බන්ධ විය ✅
+┗━━━━━━━━━━━━━━━
+▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+ඔබගේ සැසි දත්ත ඉහත පණිවිඩයේ ඇත. 
+මෙය ආරක්ෂිතව ගබඩා කරන්න!
+▬▬▬▬▬▬▬▬▬▬▬▬▬▬`;
+                    
+                    await socket.sendMessage(user_jid, { text: successMsg });
+
+                } catch (e) {
+                    console.error("Error:", e);
+                    exec('pm2 restart prabath');
+                }
+
+                await delay(100);
+                await removeFile('./session');
+                process.exit(0);
+            } else if (connection === "close" && lastDisconnect?.error?.output?.statusCode !== 401) {
+                await delay(10000);
+                startPairing(num, chatId);
+            }
         });
-
-        // Show fake loading bar
-        let loadingMsg = await bot.sendMessage(chatId, "⏳ UPLOADING IMAGE...\n[▒▒▒▒▒▒▒▒▒▒] 0%");
-
-        for (let i = 1; i <= 10; i++) {
-            await new Promise(resolve => setTimeout(resolve, 300));
-            await bot.editMessageText(fakeLoadingBar(i), {
-                chat_id: chatId,
-                message_id: loadingMsg.message_id
-            });
-        }
-
-        // Upload to imgBB
-        const formData = new FormData();
-        formData.append('image', fs.createReadStream(imagePath));
-
-        const uploadRes = await axios.post(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, formData, {
-            headers: formData.getHeaders()
-        });
-
-        if (uploadRes.data.success) {
-            const imageUrl = uploadRes.data.data.url;
-            await bot.editMessageText(`✅ IMAGE UPLOADED BY LEGEND:\n${imageUrl}`, {
-                chat_id: chatId,
-                message_id: loadingMsg.message_id
-            });
-        } else {
-            await bot.editMessageText("❌ UPLOAD FAILED. TRY AGAIN.", {
-                chat_id: chatId,
-                message_id: loadingMsg.message_id
-            });
-        }
-    } catch (error) {
-        console.error("❌ Error:", error);
-        await bot.sendMessage(chatId, "❌ ERROR UPLOADING IMAGE. TRY AGAIN.");
-    } finally {
-        // Clean up
-        if (fs.existsSync(imagePath)) {
-            fs.unlinkSync(imagePath);
-        }
+    } catch (err) {
+        console.error("Error:", err);
+        exec('pm2 restart prabath');
+        await removeFile('./session');
+        bot.sendMessage(chatId, '❌ An error occurred. Please try again later.');
     }
 });
 
-console.log("🤖 Bot is running...");
+process.on('uncaughtException', function (err) {
+    console.log('Caught exception: ' + err);
+    exec('pm2 restart prabath');
+});
+
+// Start Express server
+app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
+    console.log('Telegram bot started and polling...');
+});
