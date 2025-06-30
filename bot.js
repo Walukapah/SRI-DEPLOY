@@ -7,7 +7,7 @@ const FormData = require('form-data');
 // 🔐 Bot token and imgbb API key
 const TELEGRAM_TOKEN = '7355024353:AAFcH-OAF5l5Fj6-igY4jOtqZ7HtZGRrlYQ';
 const IMGBB_API_KEY = 'a508f32e30c7eccca82b71cdcaf9671f';
-const CHANNEL_USERNAME = 'team_black_hat_offical'; // Without '@'
+const CHANNEL_USERNAME = 'walukasri'; // Without '@'
 
 // Create bot instance
 const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
